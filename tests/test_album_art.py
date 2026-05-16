@@ -100,3 +100,52 @@ class TestAlbumArtCache:
 
         assert received["success"] is False
         assert cache.get("album-bad", width=10, height=10) is None
+
+
+from rich.segment import Segment
+from rich.style import Style
+
+from tide_pod.album_art import AlbumArtWidget
+
+
+class TestAlbumArtWidget:
+    def test_render_line_blank_when_no_pixels(self) -> None:
+        widget = AlbumArtWidget()
+        from textual.geometry import Size
+        widget._size = Size(20, 10)
+        strip = widget.render_line(0)
+        assert strip.cell_length == 20
+        text = "".join(seg.text for seg in strip._segments)
+        assert text.strip() == ""
+
+    def test_render_line_produces_half_blocks(self) -> None:
+        widget = AlbumArtWidget()
+        from textual.geometry import Size
+        widget._size = Size(4, 2)
+        # 4 cols, 2 rows -> need pixels of shape (4, 4, 3): 2*2=4 pixel rows
+        pixels = np.zeros((4, 4, 3), dtype=np.uint8)
+        pixels[0, :] = [255, 0, 0]     # top row: red
+        pixels[1, :] = [0, 255, 0]     # bot row: green
+        pixels[2, :] = [0, 0, 255]     # top row 2: blue
+        pixels[3, :] = [128, 128, 128] # bot row 2: grey
+        widget.set_pixels(pixels)
+
+        strip0 = widget.render_line(0)
+        segments = list(strip0._segments)
+        text = "".join(seg.text for seg in segments)
+        assert "▀" in text  # upper half block
+
+    def test_render_line_centers_narrow_image(self) -> None:
+        widget = AlbumArtWidget()
+        from textual.geometry import Size
+        widget._size = Size(10, 2)
+        # Image is only 4 cols wide, widget is 10 cols
+        pixels = np.full((4, 4, 3), 200, dtype=np.uint8)
+        widget.set_pixels(pixels)
+
+        strip = widget.render_line(0)
+        assert strip.cell_length == 10
+        # First 3 chars should be spaces (centering: (10-4)//2 = 3)
+        segments = list(strip._segments)
+        leading = segments[0].text
+        assert leading == "   "

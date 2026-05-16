@@ -11,6 +11,10 @@ from urllib.request import urlopen
 
 import numpy as np
 from PIL import Image
+from rich.segment import Segment
+from rich.style import Style
+from textual.strip import Strip
+from textual.widget import Widget
 
 logger = logging.getLogger(__name__)
 
@@ -73,3 +77,65 @@ class AlbumArtCache:
 
         thread = threading.Thread(target=_worker, daemon=True)
         thread.start()
+
+
+class AlbumArtWidget(Widget):
+    """Renders a pixel array as Unicode half-block characters."""
+
+    DEFAULT_CSS = """
+    AlbumArtWidget {
+        height: auto;
+    }
+    """
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._pixels: Optional[np.ndarray] = None
+
+    def set_pixels(self, pixels: Optional[np.ndarray]) -> None:
+        self._pixels = pixels
+        self.refresh()
+
+    def render_line(self, y: int) -> Strip:
+        width = self._size.width
+        height = self._size.height
+        if width <= 0 or height <= 0:
+            return Strip.blank(width)
+
+        pixels = self._pixels
+        if pixels is None:
+            return Strip.blank(width)
+
+        img_rows, img_cols = pixels.shape[0], pixels.shape[1]
+        expected_pixel_rows = height * 2
+        if img_rows < expected_pixel_rows or img_cols == 0:
+            return Strip.blank(width)
+
+        top_y = y * 2
+        bot_y = y * 2 + 1
+        if top_y >= img_rows or bot_y >= img_rows:
+            return Strip.blank(width)
+
+        # Center the image if narrower than widget
+        pad_left = max(0, (width - img_cols) // 2)
+        pad_right = max(0, width - img_cols - pad_left)
+
+        segments: list[Segment] = []
+        if pad_left > 0:
+            segments.append(Segment(" " * pad_left))
+
+        top_row = pixels[top_y]
+        bot_row = pixels[bot_y]
+        for x in range(img_cols):
+            tr, tg, tb = int(top_row[x, 0]), int(top_row[x, 1]), int(top_row[x, 2])
+            br, bg, bb = int(bot_row[x, 0]), int(bot_row[x, 1]), int(bot_row[x, 2])
+            style = Style(
+                color=f"rgb({tr},{tg},{tb})",
+                bgcolor=f"rgb({br},{bg},{bb})",
+            )
+            segments.append(Segment("▀", style))
+
+        if pad_right > 0:
+            segments.append(Segment(" " * pad_right))
+
+        return Strip(segments, width)
