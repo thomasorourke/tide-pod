@@ -149,3 +149,14 @@ class TestAlbumArtWidget:
         segments = list(strip._segments)
         leading = segments[0].text
         assert leading == "   "
+
+
+from tide_pod.album_art import AlbumArtVisualizer
+
+
+class TestAlbumArtVisualizer:
+    def test_has_correct_display_name(self) -> None:
+        assert AlbumArtVisualizer.DISPLAY_NAME == "Album Art"
+
+    def test_fps_is_low(self) -> None:
+        assert AlbumArtVisualizer.FPS <= 5

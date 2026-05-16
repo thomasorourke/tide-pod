@@ -6,7 +6,7 @@ import logging
 import threading
 from collections import OrderedDict
 from io import BytesIO
-from typing import Callable, Optional
+from typing import Callable, Optional, TYPE_CHECKING
 from urllib.request import urlopen
 
 import numpy as np
@@ -15,6 +15,9 @@ from rich.segment import Segment
 from rich.style import Style
 from textual.strip import Strip
 from textual.widget import Widget
+
+if TYPE_CHECKING:
+    from .player import Player
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +82,9 @@ class AlbumArtCache:
         thread.start()
 
 
+_shared_cache = AlbumArtCache(max_size=16)
+
+
 class AlbumArtWidget(Widget):
     """Renders a pixel array as Unicode half-block characters."""
 
@@ -117,6 +123,119 @@ class AlbumArtWidget(Widget):
             return Strip.blank(width)
 
         # Center the image if narrower than widget
+        pad_left = max(0, (width - img_cols) // 2)
+        pad_right = max(0, width - img_cols - pad_left)
+
+        segments: list[Segment] = []
+        if pad_left > 0:
+            segments.append(Segment(" " * pad_left))
+
+        top_row = pixels[top_y]
+        bot_row = pixels[bot_y]
+        for x in range(img_cols):
+            tr, tg, tb = int(top_row[x, 0]), int(top_row[x, 1]), int(top_row[x, 2])
+            br, bg, bb = int(bot_row[x, 0]), int(bot_row[x, 1]), int(bot_row[x, 2])
+            style = Style(
+                color=f"rgb({tr},{tg},{tb})",
+                bgcolor=f"rgb({br},{bg},{bb})",
+            )
+            segments.append(Segment("▀", style))
+
+        if pad_right > 0:
+            segments.append(Segment(" " * pad_right))
+
+        return Strip(segments, width)
+
+
+class AlbumArtVisualizer(Widget):
+    """Displays album art as a half-block pixel image, centered."""
+
+    DISPLAY_NAME = "Album Art"
+    FPS = 2
+
+    DEFAULT_CSS = """
+    AlbumArtVisualizer {
+        height: 1fr;
+        min-height: 6;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, player: "Player") -> None:
+        super().__init__()
+        self._player = player
+        self._pixels: Optional[np.ndarray] = None
+        self._current_album_id: Optional[str] = None
+        self._cache = _shared_cache
+
+    def on_mount(self) -> None:
+        self.set_interval(1 / self.FPS, self._tick)
+
+    def _tick(self) -> None:
+        track = self._player._current
+        album = getattr(track, "album", None) if track else None
+        album_id = str(album.id) if album else None
+
+        if album_id != self._current_album_id:
+            self._current_album_id = album_id
+            self._pixels = None
+            self.refresh()
+            if album_id and album:
+                try:
+                    url = album.image(320)
+                except Exception:
+                    return
+                self._cache.fetch_async(album_id, url, self._on_art_fetched)
+        elif album_id and self._pixels is None and self._cache.has(album_id):
+            self._render_from_cache(album_id)
+
+    def _on_art_fetched(self, album_id: str, success: bool) -> None:
+        if not success or album_id != self._current_album_id:
+            return
+        try:
+            self.app.call_from_thread(self._render_from_cache, album_id)
+        except Exception:
+            pass
+
+    def _render_from_cache(self, album_id: str) -> None:
+        width = self.size.width
+        height = self.size.height
+        if width <= 0 or height <= 0:
+            return
+        # Square art, constrained by available space
+        side_cols = min(width, height * 2)
+        side_rows = side_cols
+        pixels = self._cache.get(album_id, width=side_cols, height=side_rows)
+        if pixels is not None:
+            self._pixels = pixels
+            self.refresh()
+
+    def render_line(self, y: int) -> Strip:
+        width = self.size.width
+        height = self.size.height
+        if width <= 0 or height <= 0:
+            return Strip.blank(width)
+
+        pixels = self._pixels
+        if pixels is None:
+            return Strip.blank(width)
+
+        img_pixel_rows = pixels.shape[0]
+        img_cols = pixels.shape[1]
+        img_cell_rows = img_pixel_rows // 2
+
+        # Vertically center
+        v_pad = max(0, (height - img_cell_rows) // 2)
+        img_y = y - v_pad
+        if img_y < 0 or img_y >= img_cell_rows:
+            return Strip.blank(width)
+
+        top_y = img_y * 2
+        bot_y = img_y * 2 + 1
+        if top_y >= img_pixel_rows or bot_y >= img_pixel_rows:
+            return Strip.blank(width)
+
+        # Horizontally center
         pad_left = max(0, (width - img_cols) // 2)
         pad_right = max(0, width - img_cols - pad_left)
 
