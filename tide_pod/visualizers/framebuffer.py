@@ -72,13 +72,12 @@ class Framebuffer:
         v01 = self.buf[r0, c1]
         v10 = self.buf[r1, c0]
         v11 = self.buf[r1, c1]
-        result = (
+        return (
             v00 * (1 - dr) * (1 - dc)
             + v01 * (1 - dr) * dc
             + v10 * dr * (1 - dc)
             + v11 * dr * dc
         )
-        return result.astype(np.float32)
 
     def composite_additive(self, layer: np.ndarray) -> None:
         """Add a layer on top of the buffer (additive blend), clamped to 1.0."""

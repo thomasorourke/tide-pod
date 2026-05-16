@@ -51,8 +51,6 @@ _STYLE_BRIGHT_RED = Style(color="bright_red", bold=True)
 _STYLE_DIM = Style(color="grey42")
 
 
-
-
 # --- Spectrum analyzer -------------------------------------------------------
 
 class SpectrumVisualizer(Visualizer):

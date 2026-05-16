@@ -12,6 +12,26 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+_grid_cache: dict = {}
+
+
+def _pixel_grid(width: int, height: int):
+    """Return cached (gx, gy, dist, angle) arrays for the given dimensions."""
+    key = (width, height)
+    cached = _grid_cache.get(key)
+    if cached is not None:
+        return cached
+    ys = np.arange(height, dtype=np.float32)
+    xs = np.arange(width, dtype=np.float32)
+    gx, gy = np.meshgrid(xs, ys)
+    cx, cy = width / 2.0, height / 2.0
+    dx, dy = gx - cx, gy - cy
+    dist = np.sqrt(dx**2 + dy**2)
+    angle = np.arctan2(dy, dx)
+    result = (gx, gy, dist, angle)
+    _grid_cache[key] = result
+    return result
+
 
 class Preset:
     """Base class for visualizer presets."""
@@ -55,12 +75,8 @@ class CosmicBreath(Preset):
         if bass < 0.2:
             return None
         layer = np.zeros((height, width, 3), dtype=np.float32)
-        cx, cy = width / 2, height / 2
-        ys = np.arange(height, dtype=np.float32)
-        xs = np.arange(width, dtype=np.float32)
-        gx, gy = np.meshgrid(xs, ys)
-        dist = np.sqrt((gx - cx) ** 2 + (gy - cy) ** 2)
-        max_r = math.sqrt(cx**2 + cy**2)
+        _gx, _gy, dist, _angle = _pixel_grid(width, height)
+        max_r = math.sqrt((width / 2) ** 2 + (height / 2) ** 2)
         ring_r = (phase % 1.0) * max_r
         ring_width = 1.5 + bass * 2.0
         ring = np.exp(-((dist - ring_r) ** 2) / (2 * ring_width**2))
@@ -91,11 +107,7 @@ class NeonTunnel(Preset):
 
     def overlay(self, width, height, fft, bass, mid, treble, phase):
         layer = np.zeros((height, width, 3), dtype=np.float32)
-        cx, cy = width / 2, height / 2
-        ys = np.arange(height, dtype=np.float32)
-        xs = np.arange(width, dtype=np.float32)
-        gx, gy = np.meshgrid(xs, ys)
-        angle = np.arctan2(gy - cy, gx - cx)
+        _gx, _gy, _dist, angle = _pixel_grid(width, height)
         n_spokes = 6
         spoke = (np.cos(angle * n_spokes + phase * 4.0) + 1.0) * 0.5
         spoke *= mid * 0.4
@@ -130,12 +142,10 @@ class LavaLamp(Preset):
         layer = np.zeros((height, width, 3), dtype=np.float32)
         rng = np.random.default_rng(int(phase * 10) % 1000)
         n_blobs = 2 + int(bass * 3)
+        gx, gy, _dist, _angle = _pixel_grid(width, height)
         for _ in range(n_blobs):
             bx = rng.integers(0, width)
             by = rng.integers(0, height)
-            ys = np.arange(height, dtype=np.float32)
-            xs = np.arange(width, dtype=np.float32)
-            gx, gy = np.meshgrid(xs, ys)
             dist = np.sqrt((gx - bx) ** 2 + (gy - by) ** 2)
             blob = np.exp(-(dist**2) / (2.0 * (1.5 + bass) ** 2))
             color = self.palette(phase + rng.random(), bass)
@@ -166,12 +176,8 @@ class PulseRing(Preset):
 
     def overlay(self, width, height, fft, bass, mid, treble, phase):
         layer = np.zeros((height, width, 3), dtype=np.float32)
-        cx, cy = width / 2, height / 2
-        ys = np.arange(height, dtype=np.float32)
-        xs = np.arange(width, dtype=np.float32)
-        gx, gy = np.meshgrid(xs, ys)
-        dist = np.sqrt((gx - cx) ** 2 + (gy - cy) ** 2)
-        max_r = math.sqrt(cx**2 + cy**2)
+        _gx, _gy, dist, _angle = _pixel_grid(width, height)
+        max_r = math.sqrt((width / 2) ** 2 + (height / 2) ** 2)
         n_rings = 3
         for i in range(n_rings):
             ring_phase = (phase + i / n_rings) % 1.0

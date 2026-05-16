@@ -59,8 +59,10 @@ class MilkdropVisualizer(Visualizer):
         if width < 2 or height < 2:
             return
 
-        if self._fb is None or self._fb.width != width or self._fb.height != height:
+        if self._fb is None:
             self._fb = Framebuffer(width, height)
+        else:
+            self._fb.resize(width, height)
 
         fft = np.array(self._player.spectrum_snapshot(), dtype=np.float32)
         if fft.size > 0:
