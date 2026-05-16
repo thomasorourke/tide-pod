@@ -24,6 +24,7 @@ dependencies = [
     "tidalapi==0.8.11",
     "textual==8.2.6",
     "numpy==2.4.5",
+    "Pillow==12.2.0",
     # PyGObject is expected from system site-packages (GStreamer bindings)
 ]
 

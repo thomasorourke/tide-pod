@@ -17,7 +17,8 @@ def test_visualizer_index_known_keys() -> None:
     assert visualizer_index_for("spectrum") == 0
     assert visualizer_index_for("vu") == 1
     assert visualizer_index_for("milkdrop") == 2
-    assert visualizer_index_for("off") == 3
+    assert visualizer_index_for("art") == 3
+    assert visualizer_index_for("off") == 4
 
 
 def test_visualizer_index_unknown_falls_back_to_zero() -> None:

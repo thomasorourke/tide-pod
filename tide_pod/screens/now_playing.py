@@ -23,6 +23,7 @@ from textual.widget import Widget
 from textual.widgets import Footer, Header, Static
 
 from ..player import NowPlaying
+from ..album_art import AlbumArtVisualizer
 from ..visualizers.base import Visualizer
 from ..visualizers.widget import MilkdropVisualizer
 
@@ -348,6 +349,7 @@ VISUALIZER_OPTIONS = [
     ("spectrum", "Spectrum", SpectrumVisualizer),
     ("vu", "VU Meters", VUVisualizer),
     ("milkdrop", "Milkdrop", MilkdropVisualizer),
+    ("art", "Album Art", AlbumArtVisualizer),
     ("off", "Off", None),
 ]
 
