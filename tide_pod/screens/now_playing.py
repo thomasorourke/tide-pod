@@ -400,6 +400,7 @@ class NowPlayingScreen(Screen):
         ("n", "next", "Next"),
         ("b", "prev", "Prev"),
         ("v", "cycle_visualizer", "Visualizer"),
+        ("p", "cycle_preset", "Preset"),
         ("[", "offset_down", "Sync -25 ms"),
         ("]", "offset_up", "Sync +25 ms"),
         ("q", "app.quit", "Quit"),
@@ -535,6 +536,15 @@ class NowPlayingScreen(Screen):
     def action_prev(self) -> None:
         if self.app.player and not self.app.player.previous():
             self.notify("No previous track.", timeout=1.5)
+
+    def action_cycle_preset(self) -> None:
+        host = self.query_one("#np-vis-host", Container)
+        for child in host.children:
+            if hasattr(child, "cycle_preset"):
+                name = child.cycle_preset()
+                self.notify(f"Preset: {name}", timeout=1.5)
+                return
+        self.notify("Presets only available in Milkdrop mode", timeout=1.5)
 
     def action_offset_up(self) -> None:
         self._nudge_offset(25)
