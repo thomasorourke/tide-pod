@@ -8,7 +8,7 @@ from typing import List, TYPE_CHECKING
 import numpy as np
 from textual.strip import Strip
 
-from ..screens.now_playing import Visualizer
+from .base import Visualizer
 from .framebuffer import Framebuffer
 from .halfblock import render_halfblock_strips
 from .presets import PRESETS, Preset

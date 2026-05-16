@@ -23,6 +23,8 @@ from textual.widget import Widget
 from textual.widgets import Footer, Header, Static
 
 from ..player import NowPlaying
+from ..visualizers.base import Visualizer
+from ..visualizers.widget import MilkdropVisualizer
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..player import Player
@@ -49,35 +51,6 @@ _STYLE_BRIGHT_RED = Style(color="bright_red", bold=True)
 _STYLE_DIM = Style(color="grey42")
 
 
-class Visualizer(Widget):
-    """Base class for full-screen analyzer widgets.
-
-    Subclasses implement `_tick()` (pull data + refresh) and `render_line()`.
-    A 60 Hz timer drives _tick.
-    """
-
-    DEFAULT_CSS = """
-    Visualizer {
-        height: 1fr;
-        min-height: 6;
-        padding: 0 1;
-    }
-    """
-    # Render rate. Data updates faster than this (FFT hop is ~90 Hz), so
-    # every frame gets fresh data. The widget applies EMA smoothing between
-    # data updates so motion stays smooth even at high FPS.
-    FPS = 60
-    DISPLAY_NAME = "visualizer"
-
-    def __init__(self, player: "Player") -> None:
-        super().__init__()
-        self._player = player
-
-    def on_mount(self) -> None:
-        self.set_interval(1 / self.FPS, self._tick)
-
-    def _tick(self) -> None:  # pragma: no cover - subclassed
-        self.refresh()
 
 
 # --- Spectrum analyzer -------------------------------------------------------
@@ -371,7 +344,6 @@ class VUVisualizer(Visualizer):
 
 # --- registry ----------------------------------------------------------------
 
-from ..visualizers.widget import MilkdropVisualizer  # noqa: E402 (deferred to avoid circular import)
 
 # (config-key, display-name, widget-class-or-None). None = visualizer off.
 VISUALIZER_OPTIONS = [
