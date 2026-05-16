@@ -23,6 +23,8 @@ from textual.widget import Widget
 from textual.widgets import Footer, Header, Static
 
 from ..player import NowPlaying
+from ..visualizers.base import Visualizer
+from ..visualizers.widget import MilkdropVisualizer
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..player import Player
@@ -47,37 +49,6 @@ _STYLE_YELLOW = Style(color="yellow")
 _STYLE_RED = Style(color="red")
 _STYLE_BRIGHT_RED = Style(color="bright_red", bold=True)
 _STYLE_DIM = Style(color="grey42")
-
-
-class Visualizer(Widget):
-    """Base class for full-screen analyzer widgets.
-
-    Subclasses implement `_tick()` (pull data + refresh) and `render_line()`.
-    A 60 Hz timer drives _tick.
-    """
-
-    DEFAULT_CSS = """
-    Visualizer {
-        height: 1fr;
-        min-height: 6;
-        padding: 0 1;
-    }
-    """
-    # Render rate. Data updates faster than this (FFT hop is ~90 Hz), so
-    # every frame gets fresh data. The widget applies EMA smoothing between
-    # data updates so motion stays smooth even at high FPS.
-    FPS = 60
-    DISPLAY_NAME = "visualizer"
-
-    def __init__(self, player: "Player") -> None:
-        super().__init__()
-        self._player = player
-
-    def on_mount(self) -> None:
-        self.set_interval(1 / self.FPS, self._tick)
-
-    def _tick(self) -> None:  # pragma: no cover - subclassed
-        self.refresh()
 
 
 # --- Spectrum analyzer -------------------------------------------------------
@@ -371,10 +342,12 @@ class VUVisualizer(Visualizer):
 
 # --- registry ----------------------------------------------------------------
 
+
 # (config-key, display-name, widget-class-or-None). None = visualizer off.
 VISUALIZER_OPTIONS = [
     ("spectrum", "Spectrum", SpectrumVisualizer),
     ("vu", "VU Meters", VUVisualizer),
+    ("milkdrop", "Milkdrop", MilkdropVisualizer),
     ("off", "Off", None),
 ]
 
@@ -397,6 +370,7 @@ class NowPlayingScreen(Screen):
         ("n", "next", "Next"),
         ("b", "prev", "Prev"),
         ("v", "cycle_visualizer", "Visualizer"),
+        ("p", "cycle_preset", "Preset"),
         ("[", "offset_down", "Sync -25 ms"),
         ("]", "offset_up", "Sync +25 ms"),
         ("q", "app.quit", "Quit"),
@@ -532,6 +506,15 @@ class NowPlayingScreen(Screen):
     def action_prev(self) -> None:
         if self.app.player and not self.app.player.previous():
             self.notify("No previous track.", timeout=1.5)
+
+    def action_cycle_preset(self) -> None:
+        host = self.query_one("#np-vis-host", Container)
+        for child in host.children:
+            if hasattr(child, "cycle_preset"):
+                name = child.cycle_preset()
+                self.notify(f"Preset: {name}", timeout=1.5)
+                return
+        self.notify("Presets only available in Milkdrop mode", timeout=1.5)
 
     def action_offset_up(self) -> None:
         self._nudge_offset(25)
