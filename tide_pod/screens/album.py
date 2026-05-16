@@ -13,7 +13,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Label, Static
 
-from ..album_art import AlbumArtWidget, _shared_cache
+from ..album_art import AlbumArtWidget, shared_cache
 from ..config import LastPlayed
 
 
@@ -88,21 +88,21 @@ class AlbumScreen(Screen):
             self.app.call_from_thread(self._show_error, f"Failed to load album: {exc}")
             return
         self.tracks = list(tracks)
+        self.app.call_from_thread(self._populate_tracks)
 
-        # Fetch album art
         album_id = str(self.album.id)
-        if not _shared_cache.has(album_id):
+        try:
+            url = self.album.image(320)
+        except Exception:
+            return
+        shared_cache.fetch_async(album_id, url, self._on_art_fetched)
+
+    def _on_art_fetched(self, album_id: str, success: bool) -> None:
+        if success:
             try:
-                url = self.album.image(320)
-                from urllib.request import urlopen
-                with urlopen(url) as resp:
-                    data = resp.read()
-                _shared_cache.store(album_id, data)
+                self.app.call_from_thread(self._show_art)
             except Exception:
                 pass
-
-        self.app.call_from_thread(self._populate_tracks)
-        self.app.call_from_thread(self._show_art)
 
     def _populate_tracks(self) -> None:
         table = self.query_one("#tracks", DataTable)
@@ -122,7 +122,7 @@ class AlbumScreen(Screen):
 
     def _show_art(self) -> None:
         album_id = str(self.album.id)
-        pixels = _shared_cache.get(album_id, width=20, height=20)
+        pixels = shared_cache.get(album_id, width=20, height=20)
         if pixels is not None:
             try:
                 self.query_one("#album-art", AlbumArtWidget).set_pixels(pixels)
