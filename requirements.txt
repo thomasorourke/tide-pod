@@ -1,0 +1,10 @@
+# Direct dependencies for tide-pod. Pinned to the versions developed
+# against; transitives resolve via pip.
+#
+# PyGObject (`gi`) is intentionally NOT here — it ships with GStreamer
+# and must come from the system package manager. The venv is created
+# with --system-site-packages so it picks up the system bindings.
+
+tidalapi==0.8.11
+textual==8.2.6
+numpy==2.4.5
