@@ -371,10 +371,13 @@ class VUVisualizer(Visualizer):
 
 # --- registry ----------------------------------------------------------------
 
+from ..visualizers.widget import MilkdropVisualizer  # noqa: E402 (deferred to avoid circular import)
+
 # (config-key, display-name, widget-class-or-None). None = visualizer off.
 VISUALIZER_OPTIONS = [
     ("spectrum", "Spectrum", SpectrumVisualizer),
     ("vu", "VU Meters", VUVisualizer),
+    ("milkdrop", "Milkdrop", MilkdropVisualizer),
     ("off", "Off", None),
 ]
 
