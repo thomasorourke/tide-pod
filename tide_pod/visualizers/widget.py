@@ -21,7 +21,7 @@ class MilkdropVisualizer(Visualizer):
     """Full-screen Milkdrop-style visualizer using half-block rendering."""
 
     DISPLAY_NAME = "Milkdrop"
-    FPS = 30
+    FPS = 60
 
     DEFAULT_CSS = """
     MilkdropVisualizer {
