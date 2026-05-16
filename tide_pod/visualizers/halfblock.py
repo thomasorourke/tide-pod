@@ -38,6 +38,7 @@ def render_halfblock_strips(fb: np.ndarray) -> List[Strip]:
     H must be even. Returns H//2 Strip objects (one per terminal row).
     """
     h, w, _ = fb.shape
+    assert h % 2 == 0, f"framebuffer height must be even, got {h}"
     # Quantize to 6-bit (64 levels) then scale back to 0-255 for display.
     # This makes adjacent gradient pixels match more often, dramatically
     # improving RLE compression with no visible quality loss at terminal res.

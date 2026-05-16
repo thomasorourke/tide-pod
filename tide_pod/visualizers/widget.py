@@ -65,11 +65,11 @@ class MilkdropVisualizer(Visualizer):
             self._fb.resize(width, height)
 
         fft = np.array(self._player.spectrum_snapshot(), dtype=np.float32)
-        if fft.size > 0:
+        if fft.size >= 8:
             n = fft.size
-            bass_raw = float(fft[: n // 8].mean()) if n >= 8 else 0.0
-            mid_raw = float(fft[n // 8: n // 2].mean()) if n >= 2 else 0.0
-            treble_raw = float(fft[n // 2:].mean()) if n >= 2 else 0.0
+            bass_raw = float(fft[: n // 8].mean())
+            mid_raw = float(fft[n // 8: n // 2].mean())
+            treble_raw = float(fft[n // 2:].mean())
         else:
             bass_raw = mid_raw = treble_raw = 0.0
 
