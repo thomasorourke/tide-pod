@@ -33,7 +33,15 @@ def session_path() -> Path:
 
 @dataclass
 class Config:
-    alsa_device: str = ""  # e.g. "hw:3,0"; empty means "not picked yet"
+    # "pulse" = shared via PulseAudio/PipeWire (other apps can play at the
+    # same time); "alsa" = exclusive bit-perfect hw: output.
+    audio_backend: str = "pulse"
+    # Stable card identifier (e.g. "Schiit Bifrost 2 Unison USB"). The hw:N,M
+    # index shifts when USB devices are plugged in different orders, so we
+    # pin by name and resolve to a current hw: address at startup. Unused
+    # when audio_backend == "pulse".
+    alsa_card_name: str = ""
+    alsa_device_index: int = 0
     quality: str = "hi_res_lossless"  # low_96k | low_320k | high_lossless | hi_res_lossless
     # How far back from the appsink's freshest buffer the analyzer reads,
     # in milliseconds. Tunes the visualizer to match what you actually hear.
@@ -49,7 +57,14 @@ class Config:
             return cls()
         with path.open("rb") as f:
             data = tomllib.load(f)
-        allowed = {"alsa_device", "quality", "vis_offset_ms", "visualizer"}
+        allowed = {
+            "audio_backend",
+            "alsa_card_name",
+            "alsa_device_index",
+            "quality",
+            "vis_offset_ms",
+            "visualizer",
+        }
         return cls(**{k: v for k, v in data.items() if k in allowed})
 
     def save(self) -> None:

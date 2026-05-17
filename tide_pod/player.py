@@ -115,9 +115,18 @@ class Player:
     VU_FLOOR_DB = -50.0
     VU_CEIL_DB = -3.0
 
-    def __init__(self, alsa_device: str, vis_offset_ms: int = 300) -> None:
+    def __init__(
+        self,
+        alsa_device: str,
+        vis_offset_ms: int = 300,
+        backend: str = "alsa",
+    ) -> None:
         Gst.init(None)
-        self.alsa_device = alsa_device
+        # "alsa": exclusive hw: device, bit-perfect. "pulse": pulsesink, shared.
+        self.backend = backend
+        # Output identifier shown in the UI. Kept under the historical
+        # `alsa_device` name to avoid churning the snapshot schema.
+        self.alsa_device = "PulseAudio (shared)" if backend == "pulse" else alsa_device
         # User-tunable offset from the freshest decoded audio backward to
         # "what's currently playing." Tune with [ and ] in the Now Playing
         # view. Stored in milliseconds; converted to samples on use.
@@ -212,20 +221,29 @@ class Player:
     # Pipeline setup
     # ------------------------------------------------------------------
     def _install_sink(self) -> None:
-        """Build the bit-perfect audio sink bin and attach it to playbin.
+        """Build the audio sink bin and attach it to playbin.
+
+        ALSA mode: exclusive hw: device, bit-perfect.
+        Pulse mode: pulsesink — shared via PulseAudio/PipeWire so other apps
+        keep working at the same time. Pulse manages its own resampling, so
+        bit-perfect is off the table here.
 
         Spectrum branch is a leaky tee tap into an appsink; the FFT runs in
         Python so we get a snappy, accurate analyzer with no impact on the
-        ALSA branch.
+        output branch.
         """
+        if self.backend == "pulse":
+            output = "pulsesink"
+        else:
+            output = f"alsasink device={self.alsa_device}"
         desc = (
             f"queue ! audioconvert ! tee name=t "
-            f"t. ! queue ! alsasink device={self.alsa_device} "
+            f"t. ! queue ! {output} "
             # sync=false: the appsink pulls buffers as fast as possible so the
             # FFT thread always has fresh data, instead of being clock-gated
             # to the audio buffer arrival rate. Combined with drop=true and
             # max-buffers=1, the analyzer is pinned to the latest decoded
-            # audio. (The visualizer leads what you hear by alsasink's
+            # audio. (The visualizer leads what you hear by the sink's
             # prebuffer, but the bars respond at a high frame rate.)
             f"t. ! queue leaky=downstream max-size-buffers=2 max-size-time=0 max-size-bytes=0 "
             f"! audioconvert ! audio/x-raw,format=F32LE,channels=2 ! "
@@ -629,7 +647,8 @@ class Player:
         sink = self.playbin.get_property("audio-sink")
         if sink is None:
             return
-        alsasink = None
+        target_factory = "pulsesink" if self.backend == "pulse" else "alsasink"
+        output_sink = None
         if hasattr(sink, "iterate_elements"):
             it = sink.iterate_elements()
             while True:
@@ -637,12 +656,12 @@ class Player:
                 if ok != Gst.IteratorResult.OK:
                     break
                 factory = element.get_factory()
-                if factory and factory.get_name() == "alsasink":
-                    alsasink = element
+                if factory and factory.get_name() == target_factory:
+                    output_sink = element
                     break
-        if alsasink is None:
+        if output_sink is None:
             return
-        pad = alsasink.get_static_pad("sink")
+        pad = output_sink.get_static_pad("sink")
         if pad is None:
             return
         caps = pad.get_current_caps()

@@ -24,7 +24,7 @@ from textual.widgets import (
     TabPane,
 )
 
-from . import auth
+from . import auth, devices
 from .config import Config, LastPlayed, State
 from .player import NowPlaying, Player
 from .screens.album import AlbumScreen
@@ -83,10 +83,21 @@ class NowPlayingBar(Static):
     """Now-playing footer: track + source format + ALSA output format."""
 
     state: reactive[NowPlaying] = reactive(NowPlaying, layout=True)
+    # Set at launch when there's a remembered last-played item but the
+    # pipeline hasn't been touched yet. Shown instead of "Not playing" so
+    # the user knows pressing space will resume that item.
+    pending_resume: reactive[Optional[LastPlayed]] = reactive(None, layout=True)
 
     def render(self) -> str:
         np = self.state
         if np.track is None:
+            lp = self.pending_resume
+            if lp is not None and lp.is_set():
+                who = f"  —  {lp.artist}" if lp.artist else ""
+                return (
+                    f"⏸  [b]{lp.name}[/]{who}   [dim]· last {lp.kind}[/]\n"
+                    f"[dim]Press space to resume.[/]"
+                )
             return "[dim]Not playing[/]"
         artist = getattr(np.track.artist, "name", "")
         album = getattr(np.track.album, "name", "") if np.track.album else ""
@@ -110,7 +121,7 @@ class NowPlayingBar(Static):
 
         line2 = (
             f"[dim]Source:[/] {_fmt_source(np)}    "
-            f"[dim]ALSA[/] [b]{np.alsa_device or '?'}[/] {_fmt_alsa_format(np)}    "
+            f"[dim]Out:[/] [b]{np.alsa_device or '?'}[/] {_fmt_alsa_format(np)}    "
             f"{badge}"
         )
         return f"{line1}\n{line2}"
@@ -147,6 +158,7 @@ class TidePodApp(App):
         ("space", "toggle", "Play/Pause"),
         ("n", "next", "Next"),
         ("b", "prev", "Prev"),
+        ("ctrl+d", "change_output", "Change output"),
         ("ctrl+l", "logout", "Logout"),
         ("q", "quit", "Quit"),
     ]
@@ -199,22 +211,74 @@ class TidePodApp(App):
         await self._after_login()
 
     async def _after_login(self) -> None:
-        if not self.config.alsa_device:
-            device = await self.push_screen_wait(DevicePickerScreen())
-            if not device:
+        # Figure out which audio output to use. Two modes:
+        #   - "pulse": shared via PulseAudio/PipeWire; no device lookup needed.
+        #   - "alsa": exclusive hw:CARD,DEV. Card numbering shifts when USB
+        #     devices are plugged in different orders, so we pin by card name
+        #     and resolve to the current hw: index each launch.
+        backend = self.config.audio_backend
+        alsa_address = ""
+        need_picker = False
+        if backend == "pulse":
+            pass  # ready to go
+        elif backend == "alsa" and self.config.alsa_card_name:
+            resolved = devices.resolve(
+                self.config.alsa_card_name, self.config.alsa_device_index
+            )
+            if resolved is None:
+                self.notify(
+                    f"Saved audio device “{self.config.alsa_card_name}” not found. "
+                    "Pick another.",
+                    severity="warning",
+                    timeout=4,
+                )
+                need_picker = True
+            else:
+                alsa_address = resolved.address
+        else:
+            need_picker = True
+        if need_picker:
+            choice = await self.push_screen_wait(
+                DevicePickerScreen(
+                    current_backend=self.config.audio_backend,
+                    current_card_name=self.config.alsa_card_name,
+                    current_device_index=self.config.alsa_device_index,
+                )
+            )
+            if choice is None:
                 self.exit()
                 return
-            self.config.alsa_device = device
+            backend = choice.backend
+            self.config.audio_backend = backend
+            if choice.backend == "alsa" and choice.alsa is not None:
+                self.config.alsa_card_name = choice.alsa.card_name
+                self.config.alsa_device_index = choice.alsa.device
+                alsa_address = choice.alsa.address
+            else:
+                # Pulse mode — clear any stale alsa pin.
+                self.config.alsa_card_name = ""
+                self.config.alsa_device_index = 0
             self.config.save()
-        # Spin up the player now that we have a device.
+        # Spin up the player now that we have an output.
         self.player = Player(
-            self.config.alsa_device, vis_offset_ms=self.config.vis_offset_ms
+            alsa_address,
+            vis_offset_ms=self.config.vis_offset_ms,
+            backend=backend,
         )
         self.player.on_state_changed = self._on_player_state
         self.player.on_track_changed = self._on_player_state
         self.player.on_error = self._on_player_error
         self._poll_timer = self.set_interval(0.5, self._tick)
-        self.query_one("#search-input", Input).focus()
+        # Textual auto-focuses the first focusable widget (the search Input);
+        # nudge focus onto the results table so arrow keys / space / r work
+        # without typing into the search box. Press / to focus search.
+        self.query_one("#albums-table", DataTable).focus()
+        # Surface the last-played item in the footer. We don't preload it
+        # into the pipeline — PAUSED on a bit-perfect hw: alsasink doesn't
+        # cleanly hand off to PLAYING — so resume waits until the user
+        # presses space or `r`.
+        if self.state.last_played.is_set():
+            self.query_one(NowPlayingBar).pending_resume = self.state.last_played
 
     # ---- search -------------------------------------------------------
     async def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -434,8 +498,14 @@ class TidePodApp(App):
             self.player.play_tracks(tracks)
 
     def action_toggle(self) -> None:
-        if self.player:
-            self.player.toggle()
+        if self.player is None:
+            return
+        # Nothing loaded yet but we have a remembered item: resume it on
+        # the first space press instead of doing nothing.
+        if self.player.snapshot().track is None and self.state.last_played.is_set():
+            self.action_resume_last()
+            return
+        self.player.toggle()
 
     def action_next(self) -> None:
         if self.player and not self.player.next():
@@ -444,6 +514,49 @@ class TidePodApp(App):
     def action_prev(self) -> None:
         if self.player and not self.player.previous():
             self.notify("No previous track.", timeout=1.5)
+
+    def action_change_output(self) -> None:
+        """Re-open the device picker; tear down and rebuild the player."""
+        if self.player is None:
+            return
+        # push_screen_wait must be awaited from a worker context.
+        self.run_worker(self._do_change_output(), exclusive=True)
+
+    async def _do_change_output(self) -> None:
+        choice = await self.push_screen_wait(
+            DevicePickerScreen(
+                current_backend=self.config.audio_backend,
+                current_card_name=self.config.alsa_card_name,
+                current_device_index=self.config.alsa_device_index,
+            )
+        )
+        if choice is None:
+            return
+        self.player.shutdown()
+        if self._poll_timer is not None:
+            self._poll_timer.stop()
+            self._poll_timer = None
+        address = ""
+        self.config.audio_backend = choice.backend
+        if choice.backend == "alsa" and choice.alsa is not None:
+            self.config.alsa_card_name = choice.alsa.card_name
+            self.config.alsa_device_index = choice.alsa.device
+            address = choice.alsa.address
+        else:
+            self.config.alsa_card_name = ""
+            self.config.alsa_device_index = 0
+        self.config.save()
+        self.player = Player(
+            address,
+            vis_offset_ms=self.config.vis_offset_ms,
+            backend=choice.backend,
+        )
+        self.player.on_state_changed = self._on_player_state
+        self.player.on_track_changed = self._on_player_state
+        self.player.on_error = self._on_player_error
+        self._poll_timer = self.set_interval(0.5, self._tick)
+        label = "PulseAudio (shared)" if choice.backend == "pulse" else address
+        self.notify(f"Output: {label}. Press r to resume.", timeout=2)
 
     async def action_logout(self) -> None:
         auth.logout()
