@@ -481,7 +481,7 @@ class NowPlayingScreen(Screen):
         body = Text()
         body.append("Source  ", style="dim")
         body.append(src + "\n")
-        body.append("ALSA    ", style="dim")
+        body.append("Output  ", style="dim")
         body.append(alsa + "  ")
         body.append(f" {badge_text} ", style=badge_style)
         return Align.center(body)
