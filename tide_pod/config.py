@@ -33,9 +33,9 @@ def session_path() -> Path:
 
 @dataclass
 class Config:
-    # "alsa" = exclusive bit-perfect hw: output; "pulse" = shared via
-    # PulseAudio/PipeWire (other apps can play at the same time).
-    audio_backend: str = "alsa"
+    # "pulse" = shared via PulseAudio/PipeWire (other apps can play at the
+    # same time); "alsa" = exclusive bit-perfect hw: output.
+    audio_backend: str = "pulse"
     # Stable card identifier (e.g. "Schiit Bifrost 2 Unison USB"). The hw:N,M
     # index shifts when USB devices are plugged in different orders, so we
     # pin by name and resolve to a current hw: address at startup. Unused
